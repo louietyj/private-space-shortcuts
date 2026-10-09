@@ -7,6 +7,7 @@ import android.content.pm.ResolveInfo
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
+import java.lang.reflect.InvocationTargetException
 
 /**
  * LauncherApps and CrossProfileApps hide private space from everything but the default launcher,
@@ -46,16 +47,21 @@ object PrivateSpace {
     fun loadIcon(context: Context, user: UserHandle, info: ResolveInfo) =
         info.loadIcon(userContext(context, user).packageManager)
 
-    fun launch(context: Context, user: UserHandle, component: ComponentName) {
-        val intent = launcherIntent()
-            .setComponent(component)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        Context::class.java
-            .getMethod("startActivityAsUser", Intent::class.java, UserHandle::class.java)
-            .invoke(context, intent, user)
+    fun launch(context: Context, user: UserHandle, component: ComponentName) =
+        startActivity(context, user, launcherIntent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
+
+    /** Throws SecurityException if the target activity isn't exported. */
+    fun startActivity(context: Context, user: UserHandle, intent: Intent) {
+        try {
+            Context::class.java
+                .getMethod("startActivityAsUser", Intent::class.java, UserHandle::class.java)
+                .invoke(context, Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), user)
+        } catch (e: InvocationTargetException) {
+            throw e.cause ?: e
+        }
     }
 
-    private fun userContext(context: Context, user: UserHandle): Context =
+    fun userContext(context: Context, user: UserHandle): Context =
         Context::class.java
             .getMethod("createContextAsUser", UserHandle::class.java, Int::class.javaPrimitiveType)
             .invoke(context, user, 0) as Context

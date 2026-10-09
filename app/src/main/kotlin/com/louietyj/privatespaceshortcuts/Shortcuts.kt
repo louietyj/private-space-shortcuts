@@ -2,6 +2,7 @@ package com.louietyj.privatespaceshortcuts
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
@@ -13,11 +14,20 @@ import androidx.core.graphics.drawable.toBitmap
 
 object Shortcuts {
 
-    fun requestPin(context: Context, component: ComponentName, label: String, icon: Drawable): Boolean {
-        val shortcut = ShortcutInfo.Builder(context, component.flattenToShortString())
+    fun requestPin(context: Context, component: ComponentName, label: String, icon: Drawable): Boolean =
+        requestPin(context, component.flattenToShortString(), label, icon, LaunchActivity.intent(context, component))
+
+    fun requestPin(context: Context, shortcut: AppShortcut, fallbackIcon: Drawable): Boolean =
+        requestPin(
+            context, "shortcut:${shortcut.packageName}/${shortcut.id}", shortcut.shortLabel,
+            shortcut.icon ?: fallbackIcon, LaunchActivity.intent(context, shortcut),
+        )
+
+    private fun requestPin(context: Context, id: String, label: String, icon: Drawable, intent: Intent): Boolean {
+        val shortcut = ShortcutInfo.Builder(context, id)
             .setShortLabel(label)
             .setIcon(toIcon(icon))
-            .setIntent(LaunchActivity.intent(context, component))
+            .setIntent(intent)
             .build()
         return context.getSystemService(ShortcutManager::class.java).requestPinShortcut(shortcut, null)
     }

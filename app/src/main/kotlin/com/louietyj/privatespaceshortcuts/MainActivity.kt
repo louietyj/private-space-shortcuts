@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.os.UserHandle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,8 +32,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
+
+private const val TAG = "MainActivity"
 
 private data class PrivateApp(
     val component: ComponentName,
@@ -40,6 +44,8 @@ private data class PrivateApp(
     val icon: Drawable,
     val bitmap: ImageBitmap,
 )
+
+private data class PrivateShortcut(val shortcut: AppShortcut, val bitmap: ImageBitmap?)
 
 private sealed interface SpaceState {
     data object NeedsSetup : SpaceState
@@ -110,10 +116,33 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun onPinClick(app: PrivateApp) {
-        if (!Shortcuts.requestPin(this, app.component, app.label, app.icon)) {
-            Toast.makeText(this, "Launcher doesn't support pinned shortcuts", Toast.LENGTH_LONG).show()
+    /** The app's own shortcuts, or empty if Shizuku isn't available to read them. */
+    private suspend fun loadShortcuts(user: UserHandle, app: PrivateApp): List<PrivateShortcut> {
+        if (!Permissions.isShizukuReady()) return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                AppShortcuts.list(this@MainActivity, user, app.component.packageName)
+                    .map { PrivateShortcut(it, it.icon?.toBitmap()?.asImageBitmap()) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't list shortcuts for ${app.component.packageName}", e)
+                emptyList()
+            }
         }
+    }
+
+    private fun pinApp(app: PrivateApp) = reportPinResult(Shortcuts.requestPin(this, app.component, app.label, app.icon))
+
+    private fun pinShortcut(user: UserHandle, app: PrivateApp, shortcut: AppShortcut) {
+        try {
+            AppShortcuts.keepAlive(user, shortcut.packageName, shortcut.id)
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't keep ${shortcut.packageName}/${shortcut.id} pinned", e)
+        }
+        reportPinResult(Shortcuts.requestPin(this, shortcut, app.icon))
+    }
+
+    private fun reportPinResult(supported: Boolean) {
+        if (!supported) Toast.makeText(this, "Launcher doesn't support pinned shortcuts", Toast.LENGTH_LONG).show()
     }
 
     @Composable
@@ -178,29 +207,66 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun AppList(user: UserHandle) {
         var apps by remember(user) { mutableStateOf<List<PrivateApp>?>(null) }
+        var picking by remember { mutableStateOf<Pair<PrivateApp, List<PrivateShortcut>>?>(null) }
+        val scope = rememberCoroutineScope()
         LaunchedEffect(user) {
             apps = withContext(Dispatchers.Default) { loadApps(user) }
         }
         Text(
-            "Tap an app to add a shortcut to your home screen, then drag it into your dock.",
+            if (shizukuReady) {
+                "Tap an app to add it or one of its shortcuts to your home screen, then drag it into your dock."
+            } else {
+                "Tap an app to add a shortcut to your home screen, then drag it into your dock. Start Shizuku to also pin an app's own shortcuts, like a chat."
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
         )
         val list = apps ?: return Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
         LazyColumn {
             items(list, key = { it.component.flattenToShortString() }) { app ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onPinClick(app) }
-                        .padding(vertical = 8.dp),
-                ) {
-                    Image(app.bitmap, contentDescription = null, modifier = Modifier.size(40.dp))
-                    Spacer(Modifier.width(16.dp))
-                    Text(app.label, fontSize = 16.sp)
+                ItemRow(app.bitmap, app.label) {
+                    scope.launch {
+                        val shortcuts = loadShortcuts(user, app)
+                        if (shortcuts.isEmpty()) pinApp(app) else picking = app to shortcuts
+                    }
                 }
             }
+        }
+
+        val (app, shortcuts) = picking ?: return
+        AlertDialog(
+            onDismissRequest = { picking = null },
+            title = { Text(app.label) },
+            text = {
+                LazyColumn {
+                    item {
+                        ItemRow(app.bitmap, "App") { picking = null; pinApp(app) }
+                    }
+                    items(shortcuts, key = { it.shortcut.id }) { (shortcut, bitmap) ->
+                        ItemRow(bitmap ?: app.bitmap, shortcut.longLabel) {
+                            picking = null
+                            pinShortcut(user, app, shortcut)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } },
+        )
+    }
+
+    @Composable
+    private fun ItemRow(bitmap: ImageBitmap, label: String, onClick: () -> Unit) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 8.dp),
+        ) {
+            Image(bitmap, contentDescription = null, modifier = Modifier.size(40.dp))
+            Spacer(Modifier.width(16.dp))
+            Text(label, fontSize = 16.sp)
         }
     }
 

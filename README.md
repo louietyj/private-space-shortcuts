@@ -21,6 +21,19 @@ space is locked, the system's unlock prompt appears first.
 - Each pinned shortcut points at an invisible `LaunchActivity` that unlocks private space if needed,
   then starts the app in the private profile.
 
+### App shortcuts
+
+With Shizuku running, tapping an app also offers the shortcuts its icon shows when long-pressed
+(a chat, "New Incognito tab", etc.).
+
+- Only the default launcher may read other apps' shortcuts, but shell holds `ACCESS_SHORTCUTS`, so
+  we call `ILauncherApps` as shell through Shizuku.
+- `LauncherApps` strips the intents, so we read each one out of the shortcut's PendingIntent with
+  `getIntentForIntentSender`. The pin stores that intent and starts it directly, without Shizuku.
+- If the intent targets an unexported activity (e.g. Chrome's and Maps' shortcuts), `LaunchActivity`
+  instead fetches the shortcut's PendingIntent through Shizuku and sends it, which starts it as the
+  publisher. We pin the original shortcut as shell so this keeps working after the app drops it.
+
 ## Setup
 
 1. Install the APK in your main profile.
@@ -48,3 +61,4 @@ Tested on a Pixel 11 Pro running Android 17 with Octopi Launcher.
 ## Limitations
 
 - Relies on hidden APIs called through reflection; a future Android release could block them.
+- Listing app shortcuts needs Shizuku, and so does opening one that targets an unexported activity.
