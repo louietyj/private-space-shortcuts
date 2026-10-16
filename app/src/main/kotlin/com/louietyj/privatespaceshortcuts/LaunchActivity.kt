@@ -114,7 +114,7 @@ class LaunchActivity : Activity() {
         private const val EXTRA_SHORTCUT_PACKAGE = "shortcut_package"
         private const val EXTRA_SHORTCUT_ID = "shortcut_id"
         private const val EXTRA_SHORTCUT_INTENT = "shortcut_intent"
-        private const val UNLOCK_TIMEOUT_MS = 3000L
+        private const val UNLOCK_TIMEOUT_MS = 5000L
         private const val POLL_INTERVAL_MS = 100L
 
         fun intent(context: Context, component: ComponentName): Intent =

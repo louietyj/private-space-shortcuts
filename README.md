@@ -51,6 +51,10 @@ Shortcuts keep working while private space is locked; tapping one asks you to un
 
 ## Building
 
+Use JDK 21 and an Android SDK with API 36. Java and Kotlin bytecode targets remain at 17.
+Set `ANDROID_HOME` or `sdk.dir` in an untracked `local.properties` to the SDK directory.
+For WSL builds, use a Linux Android SDK inside WSL.
+
 ```bash
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
