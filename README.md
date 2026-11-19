@@ -34,11 +34,25 @@ With Shizuku running, tapping an app also offers the shortcuts its icon shows wh
   instead fetches the shortcut's PendingIntent through Shizuku and sends it, which starts it as the
   publisher. We pin the original shortcut as shell so this keeps working after the app drops it.
 
+## Flavors
+
+Both flavors share the same application ID, so switching is a regular update that keeps the grants.
+
+| | `shizuku` | `plain` |
+|---|---|---|
+| List private space apps, pin them, unlock and launch | ✓ | ✓ |
+| Grant the two permissions | in-app via Shizuku, or adb | adb only |
+| Pin an app's own shortcuts (a chat, "New Incognito tab", …) | with Shizuku running | – |
+| Open a shortcut that targets an unexported activity | with Shizuku running | – |
+| Shizuku, HiddenApiBypass, exported `ShizukuProvider` | included | not included |
+
+`plain` is meant for a minimal attack surface (e.g. on GrapheneOS).
+
 ## Setup
 
 1. Install the APK in your main profile.
 2. Open **Private Shortcuts** and grant the two permissions, either:
-   - with [Shizuku](https://shizuku.rikka.app/) running: tap **Grant permissions with Shizuku**, or
+   - `shizuku` flavor with [Shizuku](https://shizuku.rikka.app/) running: tap **Grant permissions with Shizuku**, or
    - over adb:
      ```bash
      adb shell pm grant com.louietyj.privatespaceshortcuts android.permission.INTERACT_ACROSS_USERS
@@ -51,9 +65,13 @@ Shortcuts keep working while private space is locked; tapping one asks you to un
 
 ## Building
 
+Use JDK 21 and an Android SDK with API 36. Java and Kotlin bytecode targets remain at 17.
+Set `ANDROID_HOME` or `sdk.dir` in an untracked `local.properties` to the SDK directory.
+For WSL builds, use a Linux Android SDK inside WSL.
+
 ```bash
-./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleShizukuDebug :app:assemblePlainDebug
+adb install -r app/build/outputs/apk/shizuku/debug/app-shizuku-debug.apk  # or plain/debug/app-plain-debug.apk
 ```
 
 Tested on a Pixel 11 Pro running Android 17 with Octopi Launcher.
@@ -61,4 +79,5 @@ Tested on a Pixel 11 Pro running Android 17 with Octopi Launcher.
 ## Limitations
 
 - Relies on hidden APIs called through reflection; a future Android release could block them.
-- Listing app shortcuts needs Shizuku, and so does opening one that targets an unexported activity.
+- Listing app shortcuts needs Shizuku, and so does opening one that targets an unexported activity;
+  the `plain` flavor can do neither.

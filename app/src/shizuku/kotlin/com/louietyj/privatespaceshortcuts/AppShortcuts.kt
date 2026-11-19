@@ -18,17 +18,6 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 
-/** A shortcut published by a private space app, as shown when long-pressing its launcher icon. */
-data class AppShortcut(
-    val packageName: String,
-    val id: String,
-    val shortLabel: String,
-    val longLabel: String,
-    /** Captured so most shortcuts can later be started without Shizuku. */
-    val intent: Intent,
-    val icon: Drawable?,
-)
-
 /**
  * Other apps' shortcuts are only visible to the default launcher, but the shell user holds
  * ACCESS_SHORTCUTS and GET_INTENT_SENDER_INTENT, so we call LauncherApps and ActivityManager as

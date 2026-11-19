@@ -98,8 +98,9 @@ class LaunchActivity : Activity() {
         try {
             PrivateSpace.startActivity(this, user, shortcut.intent)
         } catch (e: SecurityException) {
-            if (!Permissions.isShizukuReady()) throw IllegalStateException("this shortcut needs Shizuku running", e)
-            AppShortcuts.start(this, user, shortcut.packageName, shortcut.id)
+            if (!ShizukuAccess.SUPPORTED) throw IllegalStateException("this shortcut needs the Shizuku build", e)
+            if (!ShizukuAccess.isReady()) throw IllegalStateException("this shortcut needs Shizuku running", e)
+            ShizukuAccess.startShortcut(this, user, shortcut.packageName, shortcut.id)
         }
     }
 
@@ -114,7 +115,7 @@ class LaunchActivity : Activity() {
         private const val EXTRA_SHORTCUT_PACKAGE = "shortcut_package"
         private const val EXTRA_SHORTCUT_ID = "shortcut_id"
         private const val EXTRA_SHORTCUT_INTENT = "shortcut_intent"
-        private const val UNLOCK_TIMEOUT_MS = 3000L
+        private const val UNLOCK_TIMEOUT_MS = 5000L
         private const val POLL_INTERVAL_MS = 100L
 
         fun intent(context: Context, component: ComponentName): Intent =

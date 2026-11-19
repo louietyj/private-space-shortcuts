@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -23,17 +25,31 @@ android {
         }
     }
 
+    // Same applicationId for both, so switching flavor is a regular update that keeps the grants.
+    flavorDimensions += "shizuku"
+    productFlavors {
+        create("shizuku") {
+            dimension = "shizuku"
+        }
+        create("plain") {
+            dimension = "shizuku"
+            versionNameSuffix = "-plain"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -46,7 +62,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
 
-    implementation(libs.shizuku.api)
-    implementation(libs.shizuku.provider)
-    implementation(libs.hiddenapibypass)
+    "shizukuImplementation"(libs.shizuku.api)
+    "shizukuImplementation"(libs.shizuku.provider)
+    "shizukuImplementation"(libs.hiddenapibypass)
 }

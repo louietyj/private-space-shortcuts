@@ -1,7 +1,6 @@
 package com.louietyj.privatespaceshortcuts
 
 import android.content.ComponentName
-import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.os.UserHandle
@@ -34,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import rikka.shizuku.Shizuku
 
 private const val TAG = "MainActivity"
 
@@ -58,19 +56,15 @@ class MainActivity : ComponentActivity() {
 
     private var state by mutableStateOf<SpaceState>(SpaceState.NeedsSetup)
     private var shizukuReady by mutableStateOf(false)
-
-    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { _, result ->
-        if (result == PackageManager.PERMISSION_GRANTED) grantViaShizuku()
-    }
-    private val shizukuBinderListener = Shizuku.OnBinderReceivedListener {
-        shizukuReady = Permissions.isShizukuReady()
-    }
+    private var stopObservingShizuku: () -> Unit = {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
-        Shizuku.addBinderReceivedListenerSticky(shizukuBinderListener)
+        stopObservingShizuku = ShizukuAccess.observe(
+            onPermissionGranted = ::grantViaShizuku,
+            onBinderReceived = { shizukuReady = ShizukuAccess.isReady() },
+        )
 
         setContent {
             val dark = isSystemInDarkTheme()
@@ -85,13 +79,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
-        Shizuku.removeBinderReceivedListener(shizukuBinderListener)
+        stopObservingShizuku()
         super.onDestroy()
     }
 
     private fun refresh() {
-        shizukuReady = Permissions.isShizukuReady()
+        shizukuReady = ShizukuAccess.isReady()
         state = when {
             Permissions.missing(this).isNotEmpty() -> SpaceState.NeedsSetup
             else -> when (val user = PrivateSpace.profile(this)) {
@@ -102,7 +95,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun grantViaShizuku() {
-        if (!Permissions.grantViaShizuku(this)) {
+        if (!ShizukuAccess.grant(this, Permissions.missing(this))) {
             Toast.makeText(this, "Shizuku couldn't grant the permissions", Toast.LENGTH_LONG).show()
         }
         refresh()
@@ -110,18 +103,18 @@ class MainActivity : ComponentActivity() {
 
     private fun onGrantClick() {
         when {
-            Permissions.isShizukuReady() -> grantViaShizuku()
-            Permissions.isShizukuRunning() -> Permissions.requestShizukuPermission()
+            ShizukuAccess.isReady() -> grantViaShizuku()
+            ShizukuAccess.isRunning() -> ShizukuAccess.requestPermission()
             else -> Toast.makeText(this, "Shizuku isn't running", Toast.LENGTH_SHORT).show()
         }
     }
 
     /** The app's own shortcuts, or empty if Shizuku isn't available to read them. */
     private suspend fun loadShortcuts(user: UserHandle, app: PrivateApp): List<PrivateShortcut> {
-        if (!Permissions.isShizukuReady()) return emptyList()
+        if (!ShizukuAccess.isReady()) return emptyList()
         return withContext(Dispatchers.IO) {
             try {
-                AppShortcuts.list(this@MainActivity, user, app.component.packageName)
+                ShizukuAccess.listShortcuts(this@MainActivity, user, app.component.packageName)
                     .map { PrivateShortcut(it, it.icon?.toBitmap()?.asImageBitmap()) }
             } catch (e: Exception) {
                 Log.e(TAG, "Couldn't list shortcuts for ${app.component.packageName}", e)
@@ -134,7 +127,7 @@ class MainActivity : ComponentActivity() {
 
     private fun pinShortcut(user: UserHandle, app: PrivateApp, shortcut: AppShortcut) {
         try {
-            AppShortcuts.keepAlive(user, shortcut.packageName, shortcut.id)
+            ShizukuAccess.keepShortcutAlive(user, shortcut.packageName, shortcut.id)
         } catch (e: Exception) {
             Log.w(TAG, "Couldn't keep ${shortcut.packageName}/${shortcut.id} pinned", e)
         }
@@ -166,11 +159,15 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun SetupSection() {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("This app needs two permissions to open apps in private space. Grant them once with Shizuku:")
-            Button(onClick = ::onGrantClick, modifier = Modifier.fillMaxWidth()) {
-                Text(if (shizukuReady) "Grant permissions" else "Grant permissions with Shizuku")
+            if (ShizukuAccess.SUPPORTED) {
+                Text("This app needs two permissions to open apps in private space. Grant them once with Shizuku:")
+                Button(onClick = ::onGrantClick, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (shizukuReady) "Grant permissions" else "Grant permissions with Shizuku")
+                }
+                Text("…or over adb:")
+            } else {
+                Text("This app needs two permissions to open apps in private space. Grant them once over adb:")
             }
-            Text("…or over adb:")
             SelectionContainer {
                 Text(
                     Permissions.adbCommands(this@MainActivity).joinToString("\n"),
@@ -213,10 +210,13 @@ class MainActivity : ComponentActivity() {
             apps = withContext(Dispatchers.Default) { loadApps(user) }
         }
         Text(
-            if (shizukuReady) {
-                "Tap an app to add it or one of its shortcuts to your home screen, then drag it into your dock."
-            } else {
-                "Tap an app to add a shortcut to your home screen, then drag it into your dock. Start Shizuku to also pin an app's own shortcuts, like a chat."
+            when {
+                shizukuReady ->
+                    "Tap an app to add it or one of its shortcuts to your home screen, then drag it into your dock."
+                ShizukuAccess.SUPPORTED ->
+                    "Tap an app to add a shortcut to your home screen, then drag it into your dock. Start Shizuku to also pin an app's own shortcuts, like a chat."
+                else ->
+                    "Tap an app to add a shortcut to your home screen, then drag it into your dock."
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
