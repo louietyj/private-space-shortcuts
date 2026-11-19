@@ -7,7 +7,10 @@ import android.content.pm.ResolveInfo
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
+import android.util.Log
 import java.lang.reflect.InvocationTargetException
+
+private const val TAG = "PrivateSpace"
 
 /**
  * LauncherApps and CrossProfileApps hide private space from everything but the default launcher,
@@ -20,9 +23,13 @@ object PrivateSpace {
         return um.userProfiles.firstOrNull { it != Process.myUserHandle() && isPrivateProfile(context, it) }
     }
 
-    private fun isPrivateProfile(context: Context, user: UserHandle): Boolean {
+    /** Skips profiles that can't be inspected instead of failing the private space lookup. */
+    private fun isPrivateProfile(context: Context, user: UserHandle): Boolean = try {
         val um = userContext(context, user).getSystemService(UserManager::class.java)
-        return UserManager::class.java.getMethod("isPrivateProfile").invoke(um) as Boolean
+        UserManager::class.java.getMethod("isPrivateProfile").invoke(um) as Boolean
+    } catch (e: InvocationTargetException) {
+        Log.w(TAG, "Couldn't check profile $user", e.cause ?: e)
+        false
     }
 
     fun isReady(context: Context, user: UserHandle): Boolean {
@@ -61,10 +68,14 @@ object PrivateSpace {
         }
     }
 
+    /**
+     * Our context, but acting as [user]. createContextAsUser() would look up our own package in
+     * [user] and throw unless we're installed there too; "android" is special-cased to skip that.
+     */
     fun userContext(context: Context, user: UserHandle): Context =
         Context::class.java
-            .getMethod("createContextAsUser", UserHandle::class.java, Int::class.javaPrimitiveType)
-            .invoke(context, user, 0) as Context
+            .getMethod("createPackageContextAsUser", String::class.java, Int::class.javaPrimitiveType, UserHandle::class.java)
+            .invoke(context, "android", 0, user) as Context
 
     private fun launcherIntent() =
         Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
